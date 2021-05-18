@@ -1,0 +1,89 @@
+---
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: danmu-portal
+  namespace: default
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/maxScale: "1"
+        autoscaling.knative.dev/minScale: "1"
+    spec:
+      containerConcurrency: 0
+      serviceAccountName: danmu-install-sa
+      containers:
+        - image: registry.cn-hangzhou.aliyuncs.com/knative-sample/danmu-danmu:danmu-lite_b1759f04-20210518200430
+          name: user-container
+          env:
+            - name: URL
+              value: "http://danmu-message.default.1a5de7167f408bf3.app.alicontainer.com"
+          ports:
+            - containerPort: 8080
+              name: http1
+---
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: danmu-message
+  namespace: default
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/maxScale: "10"
+        autoscaling.knative.dev/minScale: "1"
+    spec:
+      containerConcurrency: 2
+      containers:
+        - args:
+            - /manager
+            - --url=http://danmu-portal.default.1a5de7167f408bf3.app.alicontainer.com/api/send
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          image: registry.cn-hangzhou.aliyuncs.com/knative-sample/danmu-manager:danmu_48680a04-20210319171906
+          name: user-container
+          ports:
+            - containerPort: 8000
+              name: http1
+
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  name: danmu-install
+  labels:
+    app: danmu
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: danmu-install-role-binding
+  labels:
+    app: danmu
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: danmu-install
+subjects:
+  - kind: ServiceAccount
+    name: danmu-install-sa
+    namespace: default
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: danmu-install-sa
+  namespace: default
+  labels:
+    app: danmu
